@@ -1,0 +1,495 @@
+<html>
+  <head>
+    <meta charset="UTF-8">
+    <title>Solar System VR</title>
+    <script src="https://aframe.io/releases/1.8.0/aframe.min.js"></script>
+    <script>
+      // ------------------------------------------------------------------
+      // Custom components. Everything you see is made from A-Frame shapes
+      // plus textures drawn in code: no imported 3D models or images.
+      // ------------------------------------------------------------------
+
+      // Draws a planet surface onto a <canvas> so it can be used as a texture.
+      function paintSurface(data) {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        const colors = data.colors;
+        const pick = () => colors[Math.floor(Math.random() * colors.length)];
+
+        // A round blob, drawn three times so it wraps around the sphere seam.
+        const blob = (x, y, radius, color, alpha) => {
+          ctx.globalAlpha = alpha;
+          ctx.fillStyle = color;
+          for (const offset of [-512, 0, 512]) {
+            ctx.beginPath();
+            ctx.arc(x + offset, y, radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        };
+
+        if (data.type === 'rings') {
+          // Concentric rings (for Saturn). Ring UVs are flat, so we draw
+          // circles around the centre of a square canvas.
+          canvas.width = canvas.height = 512;
+          const start = 256 * data.inner;
+          for (let r = start; r < 256; r++) {
+            const t = (r - start) / (256 - start);
+            const gap = t > 0.62 && t < 0.68; // the Cassini Division
+            ctx.globalAlpha = gap ? 0.05 : 0.35 + Math.random() * 0.6;
+            ctx.strokeStyle = pick();
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(256, 256, r, 0, Math.PI * 2);
+            ctx.stroke();
+          }
+          return canvas;
+        }
+
+        canvas.width = 512;
+        canvas.height = 256;
+        ctx.fillStyle = colors[0];
+        ctx.fillRect(0, 0, 512, 256);
+
+        if (data.type === 'bands') {
+          // Wavy horizontal cloud bands (gas and ice giants).
+          for (let y = 0; y < 256; ) {
+            const height = 4 + Math.random() * 20;
+            ctx.globalAlpha = 0.5 + Math.random() * 0.5;
+            ctx.fillStyle = pick();
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            for (let x = 0; x <= 512; x += 16) {
+              ctx.lineTo(x, y + Math.sin((x / 512) * Math.PI * 8 + y) * 2);
+            }
+            ctx.lineTo(512, y + height);
+            ctx.lineTo(0, y + height);
+            ctx.fill();
+            y += height;
+          }
+        } else if (data.type === 'spots') {
+          // Speckled surface (rocky worlds, the Moon, the Sun).
+          for (let i = 0; i < 350; i++) {
+            blob(Math.random() * 512, Math.random() * 256, 2 + Math.random() * 12, pick(), 0.15 + Math.random() * 0.5);
+          }
+        } else if (data.type === 'earth') {
+          // colors: ocean, forest, desert, ice
+          for (let c = 0; c < 7; c++) {
+            const cx = Math.random() * 512;
+            const cy = 50 + Math.random() * 156;
+            for (let i = 0; i < 40; i++) {
+              const land = Math.random() < 0.75 ? colors[1] : colors[2];
+              blob(cx + (Math.random() - 0.5) * 110, cy + (Math.random() - 0.5) * 70, 4 + Math.random() * 14, land, 1);
+            }
+          }
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = colors[3];
+          ctx.fillRect(0, 0, 512, 14);
+          ctx.fillRect(0, 242, 512, 14);
+          for (let i = 0; i < 60; i++) {
+            blob(Math.random() * 512, Math.random() * 256, 3 + Math.random() * 10, '#ffffff', 0.25);
+          }
+        }
+
+        if (data.storm) {
+          // A big oval storm, like Jupiter's Great Red Spot.
+          ctx.globalAlpha = 0.9;
+          ctx.fillStyle = data.storm;
+          ctx.beginPath();
+          ctx.ellipse(350, 165, 34, 16, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        return canvas;
+      }
+
+      AFRAME.registerComponent('planet-texture', {
+        schema: {
+          type: { default: 'bands', oneOf: ['bands', 'spots', 'earth', 'rings'] },
+          colors: { type: 'array', default: ['#888888'] },
+          storm: { default: '' },
+          inner: { default: 0.5 } // rings only: inner radius / outer radius
+        },
+        init: function () {
+          const THREE = AFRAME.THREE;
+          const texture = new THREE.CanvasTexture(paintSurface(this.data));
+          texture.colorSpace = THREE.SRGBColorSpace;
+          texture.anisotropy = 4;
+          const apply = () => {
+            const material = this.el.getObject3D('mesh').material;
+            material.map = texture;
+            material.color.set('#ffffff');
+            if (this.data.type === 'rings') material.transparent = true;
+            material.needsUpdate = true;
+          };
+          // Wait until A-Frame has built the mesh and its material.
+          if (this.el.hasLoaded) apply();
+          else this.el.addEventListener('loaded', apply, { once: true });
+        }
+      });
+
+      // A soft round dot, used for stars and asteroids.
+      let dotTexture = null;
+      function getDotTexture() {
+        if (dotTexture) return dotTexture;
+        const canvas = document.createElement('canvas');
+        canvas.width = canvas.height = 64;
+        const ctx = canvas.getContext('2d');
+        const gradient = ctx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gradient.addColorStop(0, 'rgba(255,255,255,1)');
+        gradient.addColorStop(0.35, 'rgba(255,255,255,0.9)');
+        gradient.addColorStop(1, 'rgba(255,255,255,0)');
+        ctx.fillStyle = gradient;
+        ctx.fillRect(0, 0, 64, 64);
+        dotTexture = new AFRAME.THREE.CanvasTexture(canvas);
+        return dotTexture;
+      }
+
+      // Thousands of stars in a single object (fast on a headset),
+      // with a third of them packed into a Milky Way band.
+      AFRAME.registerComponent('starfield', {
+        schema: {
+          count: { default: 4000 },
+          radius: { default: 400 }
+        },
+        init: function () {
+          const THREE = AFRAME.THREE;
+          const { count, radius } = this.data;
+          const positions = new Float32Array(count * 3);
+          const colors = new Float32Array(count * 3);
+          const tints = ['#ffffff', '#a8c4ff', '#ffe0b0'].map((c) => new THREE.Color(c));
+          const tiltAxis = new THREE.Vector3(1, 0, 0.4).normalize();
+          const star = new THREE.Vector3();
+
+          for (let i = 0; i < count; i++) {
+            if (i % 3 === 0) {
+              const angle = Math.random() * Math.PI * 2;
+              star.set(Math.cos(angle), (Math.random() - 0.5) * 0.3, Math.sin(angle)).normalize();
+              star.applyAxisAngle(tiltAxis, 1.1);
+            } else {
+              star.randomDirection();
+            }
+            star.multiplyScalar(radius).toArray(positions, i * 3);
+            const tint = tints[Math.floor(Math.random() * tints.length)];
+            const brightness = 0.4 + Math.random() * 0.6;
+            colors[i * 3] = tint.r * brightness;
+            colors[i * 3 + 1] = tint.g * brightness;
+            colors[i * 3 + 2] = tint.b * brightness;
+          }
+
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          geometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+          const material = new THREE.PointsMaterial({
+            size: 2.4,
+            map: getDotTexture(),
+            vertexColors: true,
+            transparent: true,
+            depthWrite: false
+          });
+          this.el.setObject3D('mesh', new THREE.Points(geometry, material));
+        }
+      });
+
+      AFRAME.registerComponent('asteroid-belt', {
+        schema: {
+          count: { default: 800 },
+          inner: { default: 5.7 },
+          outer: { default: 6.4 },
+          size: { default: 0.06 },
+          color: { type: 'color', default: '#b9a98f' }
+        },
+        init: function () {
+          const THREE = AFRAME.THREE;
+          const { count, inner, outer } = this.data;
+          const positions = new Float32Array(count * 3);
+          for (let i = 0; i < count; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const distance = inner + Math.random() * (outer - inner);
+            positions[i * 3] = Math.cos(angle) * distance;
+            positions[i * 3 + 1] = (Math.random() - 0.5) * 0.25;
+            positions[i * 3 + 2] = Math.sin(angle) * distance;
+          }
+          const geometry = new THREE.BufferGeometry();
+          geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+          const material = new THREE.PointsMaterial({
+            color: this.data.color,
+            size: this.data.size,
+            map: getDotTexture(),
+            alphaTest: 0.4
+          });
+          this.el.setObject3D('mesh', new THREE.Points(geometry, material));
+        }
+      });
+
+      // A short two-note chime, made with the Web Audio API (no sound files).
+      let audio = null;
+      function getAudio() {
+        if (!audio) audio = new (window.AudioContext || window.webkitAudioContext)();
+        if (audio.state === 'suspended') audio.resume();
+        return audio;
+      }
+      window.addEventListener('pointerdown', getAudio, { once: true });
+
+      function chime() {
+        const ctx = getAudio();
+        const now = ctx.currentTime;
+        [660, 990].forEach((frequency, i) => {
+          const start = now + i * 0.09;
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = frequency;
+          gain.gain.setValueAtTime(0.0001, start);
+          gain.gain.exponentialRampToValueAtTime(0.15, start + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.7);
+          osc.connect(gain).connect(ctx.destination);
+          osc.start(start);
+          osc.stop(start + 0.75);
+        });
+      }
+
+      // Shows the info panel when you click a planet. It floats 2 m away,
+      // just above the planet you pointed at, and turns to face you.
+      AFRAME.registerComponent('planet-info', {
+        init: function () {
+          this.title = this.el.querySelector('.info-title');
+          this.kind = this.el.querySelector('.info-kind');
+          this.fact = this.el.querySelector('.info-fact');
+          this.el.sceneEl.addEventListener('click', (evt) => {
+            const planet = evt.target.closest && evt.target.closest('.planet');
+            if (planet) this.show(planet);
+          });
+        },
+        show: function (planet) {
+          const THREE = AFRAME.THREE;
+          const eye = new THREE.Vector3();
+          const target = new THREE.Vector3();
+          this.el.sceneEl.camera.getWorldPosition(eye);
+          planet.object3D.getWorldPosition(target);
+
+          const direction = target.sub(eye).normalize();
+          const panel = this.el.object3D;
+          panel.position.copy(eye).addScaledVector(direction, 2);
+          panel.position.y += 0.6;
+          panel.lookAt(eye);
+
+          this.title.setAttribute('text', 'value', planet.dataset.name);
+          this.kind.setAttribute('text', 'value', planet.dataset.kind);
+          this.fact.setAttribute('text', 'value', planet.dataset.fact);
+          this.el.setAttribute('visible', true);
+          this.el.emit('show');
+          chime();
+
+          clearTimeout(this.hideTimer);
+          this.hideTimer = setTimeout(() => this.el.setAttribute('visible', false), 10000);
+        }
+      });
+
+      // Plays the "big bang" intro when the page loads and again when you
+      // enter VR. In VR the controllers point, so the mouse pointer is switched off.
+      AFRAME.registerComponent('experience', {
+        init: function () {
+          const scene = this.el;
+          const intro = () => document.querySelector('#system').emit('intro');
+          scene.addEventListener('loaded', intro);
+          scene.addEventListener('enter-vr', () => {
+            scene.setAttribute('raycaster', 'enabled', false);
+            intro();
+          });
+          scene.addEventListener('exit-vr', () => scene.setAttribute('raycaster', 'enabled', true));
+        }
+      });
+    </script>
+  </head>
+  <body>
+    <a-scene experience
+             background="color: #02030a"
+             renderer="antialias: true"
+             loading-screen="dotsColor: #FFC65D; backgroundColor: #02030a"
+             cursor="rayOrigin: mouse"
+             raycaster="objects: .planet">
+
+      <a-assets>
+        <!-- Planets grow a little when you point at them -->
+        <a-mixin id="hoverable"
+                 animation__hover="property: scale; to: 1.3 1.3 1.3; dur: 250; easing: easeOutQuad; startEvents: mouseenter"
+                 animation__unhover="property: scale; to: 1 1 1; dur: 250; easing: easeOutQuad; startEvents: mouseleave"></a-mixin>
+        <a-mixin id="orbit-line"
+                 geometry="primitive: ring; segmentsTheta: 128"
+                 rotation="-90 0 0"
+                 material="shader: flat; color: #7f8fd6; opacity: 0.3; transparent: true; side: double"></a-mixin>
+        <!-- Invisible, bigger sphere so tiny worlds are easier to hit with the laser -->
+        <a-mixin id="hit-area" geometry="primitive: sphere" material="opacity: 0; transparent: true; depthWrite: false"></a-mixin>
+      </a-assets>
+
+      <!-- ===== SPACE ===== -->
+      <a-entity starfield></a-entity>
+      <a-entity light="type: ambient; intensity: 0.25; color: #8899ff"></a-entity>
+
+      <a-text value="THE SOLAR SYSTEM" align="center" width="16" color="#FFC65D" position="0 4.6 -1"></a-text>
+      <a-text value="Point a controller at a planet and pull the trigger" align="center" width="9" color="#ECECEC" position="0 3.8 -1"></a-text>
+
+      <!-- A comet that streaks across the sky every 28 seconds -->
+      <a-entity position="0 10 -6" rotation="-12 -35 0">
+        <a-entity animation="property: position; from: -150 0 0; to: 150 0 0; dur: 28000; loop: true; easing: linear">
+          <a-sphere radius="0.22" material="shader: flat; color: #ffffff"></a-sphere>
+          <a-sphere radius="0.5" material="shader: flat; color: #9fd8ff; opacity: 0.35; transparent: true; blending: additive; depthWrite: false"></a-sphere>
+          <a-cone radius-bottom="0.45" radius-top="0" height="10" position="-5 0 0" rotation="0 0 90"
+                  material="shader: flat; color: #9fd8ff; opacity: 0.25; transparent: true; blending: additive; depthWrite: false; side: double"></a-cone>
+        </a-entity>
+      </a-entity>
+
+      <!-- ===== THE SOLAR SYSTEM (sizes and distances not to scale) ===== -->
+      <a-entity id="system" position="0 0.9 0" scale="0.01 0.01 0.01"
+                animation__intro="property: scale; from: 0.01 0.01 0.01; to: 1 1 1; dur: 4000; easing: easeOutExpo; startEvents: intro">
+
+        <!-- The Sun lights all the planets -->
+        <a-entity light="type: point; intensity: 3.5; decay: 0; color: #fff4e0"></a-entity>
+        <a-sphere class="planet" radius="1.3" segments-width="48" segments-height="24"
+                  material="shader: flat"
+                  planet-texture="type: spots; colors: #FFB52E, #FFE07A, #FF8A1F, #FFD04A"
+                  animation="property: rotation; to: 0 360 0; loop: true; dur: 80000; easing: linear"
+                  data-name="The Sun" data-kind="OUR STAR"
+                  data-fact="It holds 99.8% of all the mass in the Solar System. Its light needs about 8 minutes to reach Earth."></a-sphere>
+        <!-- Glow: two see-through shells that gently pulse -->
+        <a-sphere radius="1.55"
+                  material="shader: flat; color: #FF9A1F; opacity: 0.45; transparent: true; blending: additive; depthWrite: false; side: back"
+                  animation="property: scale; to: 1.08 1.08 1.08; dir: alternate; loop: true; dur: 2200; easing: easeInOutSine"></a-sphere>
+        <a-sphere radius="1.9"
+                  material="shader: flat; color: #EF2D5E; opacity: 0.2; transparent: true; blending: additive; depthWrite: false; side: back"
+                  animation="property: scale; to: 1.1 1.1 1.1; dir: alternate; loop: true; dur: 3100; easing: easeInOutSine"></a-sphere>
+
+        <!-- Orbit lines -->
+        <a-entity mixin="orbit-line" geometry="radiusInner: 2.48; radiusOuter: 2.52"></a-entity>
+        <a-entity mixin="orbit-line" geometry="radiusInner: 3.18; radiusOuter: 3.22"></a-entity>
+        <a-entity mixin="orbit-line" geometry="radiusInner: 4.08; radiusOuter: 4.12"></a-entity>
+        <a-entity mixin="orbit-line" geometry="radiusInner: 5.08; radiusOuter: 5.12"></a-entity>
+        <a-entity mixin="orbit-line" geometry="radiusInner: 7.37; radiusOuter: 7.43"></a-entity>
+        <a-entity mixin="orbit-line" geometry="radiusInner: 12.77; radiusOuter: 12.83"></a-entity>
+        <a-entity mixin="orbit-line" geometry="radiusInner: 14.96; radiusOuter: 15.04"></a-entity>
+        <a-entity mixin="orbit-line" geometry="radiusInner: 16.96; radiusOuter: 17.04"></a-entity>
+
+        <!-- Each planet sits inside a spinning "pivot" entity: rotating the
+             pivot is what moves the planet around the Sun. -->
+
+        <!-- Mercury -->
+        <a-entity rotation="0 40 0" animation="property: rotation; from: 0 40 0; to: 0 400 0; loop: true; dur: 9000; easing: linear">
+          <a-sphere class="planet" mixin="hoverable" position="2.5 0 0" radius="0.14" roughness="1"
+                    planet-texture="type: spots; colors: #8c8680, #6e6964, #a8a29c"
+                    data-name="Mercury" data-kind="ROCKY PLANET - 1ST FROM THE SUN"
+                    data-fact="The smallest planet and the closest to the Sun. A whole year here lasts only 88 Earth days.">
+            <a-entity mixin="hit-area" geometry="radius: 0.35"></a-entity>
+          </a-sphere>
+        </a-entity>
+
+        <!-- Venus -->
+        <a-entity rotation="0 200 0" animation="property: rotation; from: 0 200 0; to: 0 560 0; loop: true; dur: 15000; easing: linear">
+          <a-sphere class="planet" mixin="hoverable" position="3.2 0 0" radius="0.24" roughness="1"
+                    planet-texture="type: bands; colors: #e8c98a, #d9b574, #f2dcae"
+                    data-name="Venus" data-kind="ROCKY PLANET - 2ND FROM THE SUN"
+                    data-fact="The hottest planet, about 465 degrees Celsius. It spins backwards, and one day is longer than its year."></a-sphere>
+        </a-entity>
+
+        <!-- Earth and the Moon -->
+        <a-entity rotation="0 300 0" animation="property: rotation; from: 0 300 0; to: 0 660 0; loop: true; dur: 24000; easing: linear">
+          <a-entity position="4.1 0 0" rotation="23 0 0">
+            <a-sphere class="planet" mixin="hoverable" radius="0.27" roughness="1"
+                      planet-texture="type: earth; colors: #1d4f9e, #3f7d3a, #9b8a55, #f4f7ff"
+                      animation="property: rotation; to: 0 360 0; loop: true; dur: 8000; easing: linear"
+                      data-name="Earth" data-kind="ROCKY PLANET - 3RD FROM THE SUN"
+                      data-fact="The only place we know of with life. About 71% of its surface is covered by ocean."></a-sphere>
+            <a-entity animation="property: rotation; to: 0 360 0; loop: true; dur: 5000; easing: linear">
+              <a-sphere class="planet" mixin="hoverable" position="0.6 0 0" radius="0.07" roughness="1"
+                        planet-texture="type: spots; colors: #b9b9b9, #8f8f8f, #d6d6d6"
+                        data-name="The Moon" data-kind="EARTH'S MOON"
+                        data-fact="It drifts about 3.8 cm further away from Earth every single year.">
+                <a-entity mixin="hit-area" geometry="radius: 0.2"></a-entity>
+              </a-sphere>
+            </a-entity>
+          </a-entity>
+        </a-entity>
+
+        <!-- Mars -->
+        <a-entity rotation="0 120 0" animation="property: rotation; from: 0 120 0; to: 0 480 0; loop: true; dur: 32000; easing: linear">
+          <a-sphere class="planet" mixin="hoverable" position="5.1 0 0" radius="0.18" roughness="1"
+                    planet-texture="type: spots; colors: #b5502d, #8e3b22, #d0784a, #6b2c19"
+                    data-name="Mars" data-kind="ROCKY PLANET - 4TH FROM THE SUN"
+                    data-fact="Red because of rusty iron dust. Home to Olympus Mons, the tallest volcano in the Solar System.">
+            <a-entity mixin="hit-area" geometry="radius: 0.35"></a-entity>
+          </a-sphere>
+        </a-entity>
+
+        <!-- Asteroid belt -->
+        <a-entity asteroid-belt animation="property: rotation; to: 0 360 0; loop: true; dur: 150000; easing: linear"></a-entity>
+
+        <!-- Jupiter: its orbit passes close in front of you -->
+        <a-entity rotation="0 250 0" animation="property: rotation; from: 0 250 0; to: 0 610 0; loop: true; dur: 60000; easing: linear">
+          <a-sphere class="planet" mixin="hoverable" position="7.4 0 0" radius="0.7" roughness="1"
+                    segments-width="48" segments-height="24"
+                    planet-texture="type: bands; colors: #d8b48a, #b07f55, #efe0c8, #9c6b45, #c99a6b; storm: #b5533c"
+                    animation="property: rotation; to: 0 360 0; loop: true; dur: 6000; easing: linear"
+                    data-name="Jupiter" data-kind="GAS GIANT - 5TH FROM THE SUN"
+                    data-fact="So big that more than 1,300 Earths could fit inside. Its Great Red Spot is a storm wider than Earth."></a-sphere>
+        </a-entity>
+
+        <!-- Saturn: its orbit passes right behind you, so turn around! -->
+        <a-entity rotation="0 30 0" animation="property: rotation; from: 0 30 0; to: 0 390 0; loop: true; dur: 90000; easing: linear">
+          <a-entity class="planet" mixin="hoverable" position="12.8 0 0" rotation="0 0 20"
+                    data-name="Saturn" data-kind="GAS GIANT - 6TH FROM THE SUN"
+                    data-fact="Its rings are made mostly of ice. The planet is so light it would float in a big enough bathtub.">
+            <a-sphere radius="0.6" roughness="1" segments-width="48" segments-height="24"
+                      planet-texture="type: bands; colors: #e3c98f, #cfae6d, #f0dcae, #b8945a"
+                      animation="property: rotation; to: 0 360 0; loop: true; dur: 7000; easing: linear"></a-sphere>
+            <a-ring radius-inner="0.8" radius-outer="1.35" segments-theta="128" rotation="-90 0 0"
+                    material="shader: flat; side: double"
+                    planet-texture="type: rings; inner: 0.59; colors: #e8d3a6, #cdb27e, #b89a68, #f2e4c4"></a-ring>
+          </a-entity>
+        </a-entity>
+
+        <!-- Uranus: it rolls around the Sun on its side -->
+        <a-entity rotation="0 160 0" animation="property: rotation; from: 0 160 0; to: 0 520 0; loop: true; dur: 120000; easing: linear">
+          <a-entity class="planet" mixin="hoverable" position="15 0 0" rotation="0 0 82"
+                    data-name="Uranus" data-kind="ICE GIANT - 7TH FROM THE SUN"
+                    data-fact="It rolls around the Sun on its side, tilted about 98 degrees. The first planet found with a telescope.">
+            <a-sphere radius="0.42" roughness="1"
+                      planet-texture="type: bands; colors: #9fe3e8, #8fd6dc, #b4eef1"></a-sphere>
+            <a-ring radius-inner="0.62" radius-outer="0.7" segments-theta="64" rotation="-90 0 0"
+                    material="shader: flat; color: #cfeff2; opacity: 0.35; transparent: true; side: double"></a-ring>
+          </a-entity>
+        </a-entity>
+
+        <!-- Neptune -->
+        <a-entity rotation="0 70 0" animation="property: rotation; from: 0 70 0; to: 0 430 0; loop: true; dur: 150000; easing: linear">
+          <a-sphere class="planet" mixin="hoverable" position="17 0 0" radius="0.4" roughness="1"
+                    planet-texture="type: bands; colors: #3a63d8, #2f50b8, #5b82ea; storm: #1b2f7a"
+                    animation="property: rotation; to: 0 360 0; loop: true; dur: 9000; easing: linear"
+                    data-name="Neptune" data-kind="ICE GIANT - 8TH FROM THE SUN"
+                    data-fact="Winds here blow faster than 2,000 km/h. One year on Neptune lasts 165 Earth years."></a-sphere>
+        </a-entity>
+      </a-entity>
+
+      <!-- ===== INFO PANEL (hidden until you click a planet) ===== -->
+      <a-entity id="info-panel" planet-info visible="false"
+                animation__show="property: scale; from: 0.1 0.1 0.1; to: 1 1 1; dur: 400; easing: easeOutBack; startEvents: show">
+        <a-plane width="1.8" height="1" position="0 0 -0.01"
+                 material="shader: flat; color: #4CC3D9; opacity: 0.7; transparent: true"></a-plane>
+        <a-plane width="1.76" height="0.96"
+                 material="shader: flat; color: #070b1f; opacity: 0.92; transparent: true"></a-plane>
+        <a-text class="info-title" value="" align="center" width="4" color="#FFC65D" position="0 0.3 0.01"></a-text>
+        <a-text class="info-kind" value="" align="center" width="1.8" color="#4CC3D9" position="0 0.13 0.01"></a-text>
+        <a-text class="info-fact" value="" align="center" width="1.6" wrap-count="36" color="#ECECEC" position="0 -0.18 0.01"></a-text>
+      </a-entity>
+
+      <!-- ===== YOU: a glowing platform between Jupiter's and Saturn's orbits ===== -->
+      <a-entity id="rig" position="0 0 9.8">
+        <a-entity camera look-controls position="0 1.6 0"></a-entity>
+        <a-entity laser-controls="hand: left" raycaster="objects: .planet; far: 50; lineColor: #4CC3D9; lineOpacity: 0.9"></a-entity>
+        <a-entity laser-controls="hand: right" raycaster="objects: .planet; far: 50; lineColor: #FFC65D; lineOpacity: 0.9"></a-entity>
+        <a-circle radius="1" rotation="-90 0 0"
+                  material="shader: flat; color: #0d1838; opacity: 0.55; transparent: true"></a-circle>
+        <a-ring radius-inner="0.96" radius-outer="1.02" segments-theta="64" rotation="-90 0 0"
+                material="shader: flat; color: #4CC3D9; opacity: 0.8; transparent: true"
+                animation="property: material.opacity; from: 0.3; to: 1; dir: alternate; loop: true; dur: 1600; easing: easeInOutSine"></a-ring>
+      </a-entity>
+    </a-scene>
+  </body>
+</html>
