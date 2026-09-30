@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<!-- Tells the browser: "read this file with modern HTML rules".
+     Without it the browser falls back to old "quirks mode" and can lay things out wrongly. -->
+
+<html lang="en">
+<!-- The root tag. Everything else lives inside it.
+     lang="en" says the page is in English (helps screen readers and search engines). -->
+
+  <head>
+  <!-- The head holds information ABOUT the page. Nothing in here is drawn on screen. -->
+
+    <meta charset="UTF-8">
+    <!-- Character encoding. Makes sure special characters (ä, ö, é, emoji) show up correctly. -
+    <title>Hello World VR</title>
+    <!-- The text shown in the browser tab, and the name used for bookmarks. -->
+
+    <script src="https://aframe.io/releases/1.8.0/aframe.min.js"></script>
+    <!-- Loads the A-Frame library (version 1.8.0) from its CDN, i.e. from the internet.
+         This is the line that teaches the browser what tags like <a-scene> and <a-box> mean.
+         It must come BEFORE the body, so the tags are understood by the time they are read.
+         A-Frame is built on Three.js, which is built on WebGL, the browser's 3D graphics engine. -->
+
+  </head>
+
+  <body>
+  <!-- The body holds everything a visitor actually sees.
+
+       NOTE: normal HTML tags like <h1> or <p> do NOT appear inside a headset.
+       Once you press "Enter VR", the browser only draws the 3D scene below.
+       So in VR you use <a-text> instead of <h1>. -->
+
+    <a-scene>
+    <!-- The 3D world. Everything inside these tags exists in the scene.
+         A-Frame automatically gives you, for free:
+           - a camera (your eyes), placed at 0 1.6 0, i.e. 1.6 m above the floor
+           - basic lighting
+           - mouse-drag + WASD keys to look around on a desktop
+           - the "VR" button in the bottom-right corner
+
+         HOW POSITIONS WORK -> position="x y z", measured in metres:
+           x = left (-) / right (+)
+           y = down (-) / up   (+)
+           z = away from you (-) / towards you (+)
+         So z="-3" means "3 metres in front of where you are standing". -->
+
+      <a-sky color="#ECECEC"></a-sky>
+      <!-- A giant sphere wrapped around the whole scene, seen from the inside.
+           It is the background/horizon. Here a light grey.
+           Try color="#001133" for a night sky. -->
+
+      <a-plane position="0 0 -4" rotation="-90 0 0" width="8" height="8" color="#7BC8A4"></a-plane>
+      <!-- The ground.
+           position="0 0 -4"  -> centred left/right, at floor height (y=0), 4 m in front of you.
+           rotation="-90 0 0" -> a plane is created standing upright like a wall, so we tip it
+                                 -90 degrees around the x-axis to lay it flat like a floor.
+           width / height     -> 8 m by 8 m (on a flat plane, "height" is its depth).
+           color              -> a soft green. -->
+
+      <a-text
+        value="Hello, World!"
+        position="0 2.5 -3"
+        align="center"
+        width="6"
+        color="#222222"></a-text>
+      <!-- Text that exists as a real object in 3D space (this replaces your <h1>).
+           value     -> the words to display.
+           position  -> 2.5 m up, 3 m in front, so it floats at eye level ahead of you.
+           align     -> centres the text on its own position instead of starting there.
+           width     -> how wide the text block is in metres; bigger width = bigger letters.
+           color     -> dark grey, so it is readable against the light sky. -->
+
+      <a-box
+        position="-1 0.5 -3"
+        rotation="0 45 0"
+        color="#4CC3D9"
+        animation="property: rotation; to: 0 405 0; loop: true; dur: 4000; easing: linear"></a-box>
+      <!-- A cube. Default size is 1 m on each side.
+           position -> 1 m to the LEFT, 0.5 m up (half its height, so it rests on the floor),
+                       3 m in front.
+           rotation -> turned 45 degrees around the y-axis (the upright axis), so you see a corner.
+           color    -> light blue.
+           animation-> spins the box. Read it as four settings separated by semicolons:
+                         property: rotation  = what to change
+                         to: 0 405 0         = the end value; 405 = the starting 45 + a full 360
+                         loop: true          = repeat forever
+                         dur: 4000           = one turn takes 4000 milliseconds (4 seconds)
+                         easing: linear      = constant speed, no slowing down at the ends -->
+
+      <a-sphere position="0 1.25 -5" radius="1.25" color="#EF2D5E"></a-sphere>
+      <!-- A ball.
+           position -> straight ahead, 5 m away, lifted 1.25 m so it sits ON the floor.
+           radius   -> 1.25 m from its centre to its surface (so it is 2.5 m across).
+                       Lifting it by exactly the radius is what makes it touch the ground.
+           color    -> red/pink. -->
+
+      <a-cylinder position="1 0.75 -3" radius="0.5" height="1.5" color="#FFC65D"></a-cylinder>
+      <!-- A tube/pillar.
+           position -> 1 m to the RIGHT, 3 m in front, raised 0.75 m (half its height).
+           radius   -> 0.5 m, so it is 1 m thick.
+           height   -> 1.5 m tall.
+           color    -> yellow. -->
+
+    </a-scene>
+
+  </body>
+</html>

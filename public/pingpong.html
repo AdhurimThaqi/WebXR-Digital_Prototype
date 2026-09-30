@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SPIN — VR Table Tennis</title>
+    <link rel="icon" type="image/svg+xml" href="favicon.svg">
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Oxanium:wght@600;700;800&display=swap">
+    <script src="https://aframe.io/releases/1.8.0/aframe.min.js"></script>
+    
+    <!-- The arena, the sound engine, the screens, the match rules + opponent, and the physics core -->
+    <script src="pingpong/world.js"></script>
+    <script src="pingpong/audio.js"></script>
+    <script src="pingpong/ui.js"></script>
+    <script src="pingpong/rules.js"></script>
+    <script src="pingpong/game.js"></script>
+    <style>
+      :root { --ink: #e9f1ff; --dim: #8ea0bf; --accent: #39e4ff; --hot: #ff4f7b; --glass: rgba(10, 13, 22, 0.72); }
+      html, body { margin: 0; height: 100%; background: #05060a; overflow: hidden; }
+      .hud {
+        position: fixed; left: 20px; top: 20px; z-index: 10; max-width: 340px;
+        padding: 18px 20px; border-radius: 14px; background: var(--glass);
+        border: 1px solid rgba(57, 228, 255, 0.25); backdrop-filter: blur(8px);
+        color: var(--ink); font: 400 14px/1.5 Inter, system-ui, sans-serif;
+        transition: opacity 0.4s;
+      }
+      .hud h1 { margin: 0; font: 800 30px/1 Oxanium, Inter, sans-serif; letter-spacing: 0.06em; }
+      .hud h1 span { color: var(--accent); }
+      .hud .kicker { margin: 6px 0 14px; color: var(--dim); font-weight: 500; }
+      .hud dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 0; }
+      .hud dt { font-weight: 700; color: var(--accent); white-space: nowrap; }
+      .hud dd { margin: 0; color: var(--ink); }
+      .hud .foot { margin-top: 14px; color: var(--dim); font-size: 12px; }
+      .hud-button {
+        margin-top: 12px; padding: 7px 12px; border-radius: 8px; cursor: pointer;
+        background: transparent; color: var(--ink); border: 1px solid rgba(233, 241, 255, 0.3);
+        font: 600 12px Inter, sans-serif;
+      }
+      .hud-button:hover { border-color: var(--accent); color: var(--accent); }
+      .hud.small dl, .hud.small .foot, .hud.small .kicker { display: none; }
+      body.in-vr .hud { opacity: 0; pointer-events: none; }
+      @media (max-width: 600px) {
+        .hud { left: 12px; right: 12px; top: 12px; max-width: none; padding: 12px 14px; }
+        .hud h1 { font-size: 24px; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Desktop help card. It fades away once you enter VR. -->
+    <div class="hud" id="hud">
+      <h1>SP<span>I</span>N</h1>
+      <div class="kicker">VR Table Tennis · HSLU WebXR prototype</div>
+      <dl>
+        <dt>VR</dt><dd>Your controller is the paddle. Just swing. Tap menu buttons with the paddle. Other trigger switches hands.</dd>
+        <dt>Mouse</dt><dd>Move to place the paddle where the ball will be. It swings by itself, or click / Space.</dd>
+        <dt>Keys</dt><dd>M music · Esc menu</dd>
+      </dl>
+      <div class="foot">Sound on for the full arena atmosphere. Best with headphones.</div>
+      <button class="hud-button" id="hud-toggle">Hide help</button>
+    </div>
+
+    <a-scene pp-arena ping-pong
+             background="color: #05060a"
+             fog="type: exponential; color: #06070b; density: 0.028"
+             renderer="antialias: true; colorManagement: true; highRefreshRate: true; foveationLevel: 1"
+             loading-screen="dotsColor: #39e4ff; backgroundColor: #05060a"
+             vr-mode-ui="enabled: true">
+      <!-- YOU. On a desktop the camera looks down the table from behind your paddle.
+           In VR the headset takes over and you stand at the near end of the table. -->
+      <a-entity id="rig">
+        <a-entity id="cam" camera="fov: 70" position="0 1.52 0.8" rotation="-16 0 0"></a-entity>
+      </a-entity>
+    </a-scene>
+
+    <script>
+      document.getElementById('hud-toggle').addEventListener('click', (e) => {
+        const hud = document.getElementById('hud');
+        hud.classList.toggle('small');
+        e.target.textContent = hud.classList.contains('small') ? 'Show help' : 'Hide help';
+      });
+    </script>
+  </body>
+</html>
