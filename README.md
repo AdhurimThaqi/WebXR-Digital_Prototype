@@ -18,4 +18,4 @@ If you are developing a production application, we recommend using TypeScript wi
 
 ## Web XR Module Repository 
 
-This repository will be used for the WebXR module practices and also the project required! 
+This repository will be used for the WebXR module practices 
