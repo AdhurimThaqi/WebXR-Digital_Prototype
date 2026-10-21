@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AR Image Target</title>
+
+    <!-- MindAR 1.2.5 is built and tested against A-Frame 1.5.0 (newer A-Frame versions can break it). -->
+    <script src="https://aframe.io/releases/1.5.0/aframe.min.js"></script>
+    <!-- MindAR: image tracking. Must be loaded after A-Frame. -->
+    <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+    <!-- aframe-extras gives us "animation-mixer", which plays the animations baked into the GLB from Blender. -->
+    <script src="https://cdn.jsdelivr.net/npm/aframe-extras@7.2.0/dist/aframe-extras.min.js"></script>
+  </head>
+
+  <body>
+    <!-- mindar-image       -> which compiled target file to look for (made from your target image).
+         gltf-model         -> output.glb is Draco-compressed, so A-Frame needs the Draco decoder to read it.
+         vr-mode-ui         -> no VR button; this is phone AR. -->
+    <a-scene
+      mindar-image="imageTargetSrc: ar/targets.mind; filterMinCF: 0.0001; filterBeta: 0.001"
+      gltf-model="dracoDecoderPath: https://www.gstatic.com/draco/versioned/decoders/1.5.6/"
+      color-space="sRGB"
+      renderer="colorManagement: true, physicallyCorrectLights"
+      vr-mode-ui="enabled: false"
+      device-orientation-permission-ui="enabled: false">
+
+      <a-assets>
+        <!-- Spaces in a URL must be written as %20, and URLs use forward slashes. -->
+        <a-asset-item id="avatarModel"
+          src="WebXR-Digital_Prototype\public\WebXR-Digital_Prototype\Web-XR_Lecture_Materials\SW-03-05\image tracking example ressources\output.glb"></a-asset-item>
+      </a-assets>
+
+      <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+      <a-light type="ambient" intensity="1.5"></a-light>
+      <a-light type="directional" position="0 1 1" intensity="2"></a-light>
+
+      <!-- Everything inside this entity sticks to the printed image.
+           1 unit = the width of the target image. -->
+      <a-entity mindar-image-target="targetIndex: 0">
+        <!-- The Blender model is about 10 units wide, so scale 0.1 makes it roughly as wide as the image.
+             rotation 90 0 0 stands it up on the image (remove it if you want it lying flat).
+             animation-mixer plays every animation clip in the file on loop. -->
+        <a-gltf-model
+          src="#avatarModel"
+          position="0 0 0.1"
+          rotation="90 0 0"
+          scale="0.1 0.1 0.1"
+          animation-mixer="clip: *; loop: repeat">
+        </a-gltf-model>
+      </a-entity>
+    </a-scene>
+  </body>
+</html>
